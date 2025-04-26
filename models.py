@@ -1,7 +1,7 @@
 import peewee as pw
 
 
-db = pw.SqliteDatabase("data/students_new.db")
+db = pw.SqliteDatabase("students_new.db")
 
 
 class Profession(pw.Model):
