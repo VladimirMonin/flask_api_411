@@ -8,135 +8,67 @@ API для управления учетными записями студент
 Доступные маршруты
 -----------------
 
-GET /api/students
-----------------
-    Получение списка всех студентов.
-    
-    Параметры запроса:
-        order (str, необязательный): 
-            Порядок сортировки. Допустимые значения: 'asc', 'desc'.
-            По умолчанию сортировка производится по возрастанию.
-    
-    Возвращает:
-        JSON-массив объектов студентов:
-        [
-            {
-                "id": 1,
-                "name": "Иван Иванов",
-                "group": "Группа-101",
-                ...
-            },
-            ...
-        ]
+* Аутентификация
+    * POST /api/auth/login - Вход в систему и получение JWT токена
+    * POST /api/auth/register - Регистрация нового пользователя
 
-POST /api/students/create
------------------------
-    Создание записи о новом студенте.
-    
-    Тело запроса (JSON):
-        {
-            "name": "Имя Фамилия",
-            "group": "Группа-XXX",
-            ...другие поля...
-        }
-    
-    Возвращает:
-        JSON-объект созданного студента с присвоенным id:
-        {
-            "id": 123,
-            "name": "Имя Фамилия",
-            "group": "Группа-XXX",
-            ...
-        }
+* Студенты
+    * GET /api/student/{id} - Получение данных конкретного студента по его идентификатору
+    * POST /api/students/create - Создание записи о новом студенте
 
-GET /api/student/{id} 
-------------------
-    Получение данных конкретного студента по его идентификатору.
-    
-    Параметры пути:
-        id (int): Уникальный идентификатор студента.
-    
-    Возвращает:
-        JSON-объект студента:
-        {
-            "id": 1,
-            "name": "Иван Иванов",
-            "group": "Группа-101",
-            ...
-        }
-
-PUT /api/student/{id}/update
--------------------------
-    Обновление данных студента.
-    
-    Параметры пути:
-        id (int): Уникальный идентификатор студента.
-    
-    Тело запроса (JSON):
-        {
-            "name": "Новое Имя",
-            "group": "Новая-Группа",
-            ...поля для обновления...
-        }
-    
-    Возвращает:
-        JSON-объект обновленного студента:
-        {
-            "id": 1,
-            "name": "Новое Имя",
-            "group": "Новая-Группа",
-            ...
-        }
-
-DELETE /api/student/{id}/delete
----------------------------
-    Удаление записи о студенте.
-    
-    Параметры пути:
-        id (int): Уникальный идентификатор студента.
-    
-    Возвращает:
-        JSON с результатом операции:
-        {
-            "success": true,
-            "message": "Студент успешно удален"
-        }
+Документация API доступна по адресу /api/docs
 """
-from flask import Flask, jsonify, request, Response
-from models import Student
-import json
 
-# 1. Создали экземпляр приложения Flask
-app = Flask(__name__)
+from apiflask import APIFlask
+from flask import Response, json, g
+from models import Student, Group, db
+import config
 
-app.config['JSON_AS_ASCII'] = False
+# Импортируем маршруты
+from api.routes.students import students_bp
+from api.routes.auth import auth_bp
 
-# GET /api/student/{id} 
-# http://127.0.0.1:5000/api/student/1
-@app.route('/api/student/<int:id>', methods=['GET'])
-def get_student_by_id(id):
-    try:
-        student = Student.get(Student.id == id)
-        
-        data = {
-            'id': student.id,
-            'name': f"{student.first_name} {student.last_name}",
-            'group': student.group.group_name if student.group else None,
-            'age': student.age,
-            'middle_name': student.middle_name
-        }
-        
-        # Явно указываем ensure_ascii=False для корректной работы с кириллицей
-        json_data = json.dumps(data, ensure_ascii=False)
-        
-        return Response(
-            json_data, 
-            mimetype='application/json; charset=utf-8'
-        )
-    except Student.DoesNotExist:
-        return jsonify({'error': 'Студент не найден'}), 404
-    
+# Создаем экземпляр приложения APIFlask
+app = APIFlask(
+    __name__,
+    title=config.APP_NAME,
+    version=config.APP_VERSION,
+    spec_path=config.API_SPEC_PATH,
+    docs_path=config.API_DOCS_PATH,
+)
 
-if __name__ == '__main__':
-    # 2. Запустили приложение на локальном сервере
-    app.run(debug=True)
+# Настраиваем приложение
+app.config["JSON_AS_ASCII"] = False
+
+# Регистрируем blueprints для модульности
+app.register_blueprint(students_bp)
+app.register_blueprint(auth_bp)
+
+
+# Подключение к БД перед каждым запросом
+@app.before_request
+def connect_db():
+    """
+    Подключаемся к базе данных перед обработкой запроса.
+    """
+    db.connect(reuse_if_open=True)
+
+
+# Закрытие соединения с базой данных после обработки запроса
+@app.teardown_appcontext
+def close_db(exception):
+    """
+    Закрывает соединение с базой данных после обработки запроса.
+    """
+    if not db.is_closed():
+        db.close()
+
+
+if __name__ == "__main__":
+    # Создаем таблицы перед запуском приложения
+    db.connect(reuse_if_open=True)
+    db.create_tables([Student, Group], safe=True)
+    db.close()
+
+    # Запускаем приложение
+    app.run(debug=config.DEBUG)
