@@ -104,7 +104,7 @@ DELETE /api/student/{id}/delete
 """
 
 from flask import Flask, jsonify, request, Response
-from models import Student
+from models import Student, Group
 import json
 
 # 1. Создали экземпляр приложения Flask
@@ -145,6 +145,82 @@ def get_student_by_id(id):
         return Response(
             json.dumps({"error": "Студент не найден"}, ensure_ascii=False),
             status=404,
+            mimetype="application/json; charset=utf-8",
+        )
+
+
+# POST /api/students/create
+# Создание новоо студента
+@app.route("/api/students/create", methods=["POST"])
+def create_student():
+    try:
+        # Пробуем получить данные из запроса
+        data = request.get_json()
+
+        # Проверяем, что данные были получены - если нет, то возвращаем ошибку
+        if not data:
+            return Response(
+                json.dumps({"error": "Нет данных для создания студента"}, ensure_ascii=False),
+                status=400,
+                mimetype="application/json; charset=utf-8",
+            )
+        
+        # Если тело запроса есть, мы добываем данные из него
+        first_name = data.get("first_name")
+        middle_name = data.get("middle_name")
+        last_name = data.get("last_name")
+        age = data.get("age")
+        group = data.get("group")
+
+        # Если мы НЕ получили данные из тела запроса, то возвращаем ошибку
+        if not all([first_name, middle_name, last_name, age, group]):
+            return Response(
+                json.dumps({"error": "Не все данные для создания студента были предоставлены"}, ensure_ascii=False),
+                status=400,
+                mimetype="application/json; charset=utf-8",
+            )
+        
+        # Для создания нового студента нам нужен экземпляр группы
+        try:
+            group = Group.get(Group.group_name == group)
+        except Group.DoesNotExist:
+            return Response(
+                json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
+                status=404,
+                mimetype="application/json; charset=utf-8",
+            )
+        
+        # Создаем нового студента
+        student = Student.create(
+            first_name=first_name,
+            middle_name=middle_name,
+            last_name=last_name,
+            age=age,
+            group=group,
+        )
+
+        # Возвращаем ответ с данными созданного студента
+        data = {
+            "id": student.id,
+            "name": f"{student.first_name} {student.last_name}",
+            "group": student.group.group_name if student.group else None,
+            "age": student.age,
+            "middle_name": student.middle_name,
+        }
+
+        json_data = json.dumps(data, ensure_ascii=False)
+
+        return Response(
+            json_data,
+            mimetype="application/json; charset=utf-8",
+            status=201,
+        )
+    
+    except Exception as e:
+        # Если произошла ошибка, возвращаем сообщение об ошибке
+        return Response(
+            json.dumps({"error": str(e)}, ensure_ascii=False),
+            status=500,
             mimetype="application/json; charset=utf-8",
         )
 
