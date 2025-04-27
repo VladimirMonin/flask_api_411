@@ -103,6 +103,7 @@ DELETE /api/student/{id}/delete
         }
 """
 
+from turtle import st
 from flask import Flask, jsonify, request, Response
 from models import Student, Group
 import json
@@ -223,6 +224,33 @@ def create_student():
             status=500,
             mimetype="application/json; charset=utf-8",
         )
+    
+
+# DELETE /api/student/{id}/delete
+# Удаление студента по id
+@app.route("/api/student/<int:id>/delete", methods=["DELETE"])
+def delete_student(id):
+    # Находим студента по id
+    try:
+        student = Student.get(Student.id == id)
+    
+    # Если студент НЕ найден, возвращаем ошибку
+    except Student.DoesNotExist:
+        return Response(
+            json.dumps({"error": "Студент не найден"}, ensure_ascii=False),
+            status=404,
+            mimetype="application/json; charset=utf-8",
+        )
+    
+    # Если студент найден, то удаляем его
+    student.delete_instance()
+
+    # Возвращаем ответ с сообщением об успешном удалении
+    return Response(
+        json.dumps({"message": "Студент успешно удален"}, ensure_ascii=False),
+        status=200,
+        mimetype="application/json; charset=utf-8",
+    )
 
 
 if __name__ == "__main__":
