@@ -103,6 +103,7 @@ DELETE /api/student/{id}/delete
         }
 """
 
+import re
 from turtle import st
 from flask import Flask, jsonify, request, Response
 from models import Student, Group
@@ -250,6 +251,86 @@ def delete_student(id):
         json.dumps({"message": "Студент успешно удален"}, ensure_ascii=False),
         status=200,
         mimetype="application/json; charset=utf-8",
+    )
+
+# PUT /api/student/{id}/update
+# Обновление данных студента по id
+@app.route("/api/student/<int:id>/update", methods=["PUT"])
+def update_student(id):
+    # Находим студента по id
+    try:
+        student = Student.get(Student.id == id)
+    
+    # Если студент НЕ найден, возвращаем ошибку
+    except Student.DoesNotExist:
+        return Response(
+            json.dumps({"error": "Студент не найден"}, ensure_ascii=False),
+            status=404,
+            mimetype="application/json; charset=utf-8",
+        )
+    
+    # Получаем данные из тела запроса
+    data = request.get_json()
+
+    # Проверяем, что данные были получены - если нет, то возвращаем ошибку
+    if not data:
+        return Response(
+            json.dumps({"error": "Нет данных для обновления студента"}, ensure_ascii=False),
+            status=400,
+            mimetype="application/json; charset=utf-8",
+        )
+    
+    # Если тело запроса есть, мы добываем данные из него
+    first_name = data.get("first_name")
+    middle_name = data.get("middle_name")
+    last_name = data.get("last_name")
+    age = data.get("age")
+    group = data.get("group")
+
+    # Если мы НЕ получили данные из тела запроса, то возвращаем ошибку
+    if not all([first_name, middle_name, last_name, age, group]):
+        return Response(
+            json.dumps({"error": "Не все данные для обновления студента были предоставлены"}, ensure_ascii=False),
+            status=400,
+            mimetype="application/json; charset=utf-8",
+        )
+    
+    # Для создания нового студента нам нужен экземпляр группы
+    try:
+        group = Group.get(Group.group_name == group)
+    except Group.DoesNotExist:
+        return Response(
+            json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
+            status=404,
+            mimetype="application/json; charset=utf-8",
+        )
+    
+    # Обновляем данные студента
+    student.first_name = first_name
+    student.middle_name = middle_name
+    student.last_name = last_name
+    student.age = age
+    student.group = group
+
+    # Сохраняем изменения в базе данных
+    student.save()
+
+    # Возвращаем ответ с данными обновленного студента
+    data = {
+        "id": student.id,
+        "name": f"{student.first_name} {student.last_name}",
+        "group": student.group.group_name if student
+        .group else None,
+        "age": student.age,
+        "middle_name": student.middle_name,
+    }
+
+    response_data = json.dumps(data, ensure_ascii=False)
+
+    return Response(
+        response_data,
+        mimetype="application/json; charset=utf-8",
+        status=200,
     )
 
 
