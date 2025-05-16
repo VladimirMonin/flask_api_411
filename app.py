@@ -1,5 +1,5 @@
 from flask import Flask, jsonify
-from students_routes import students_bp
+from blueprints.students.students_routes import students_bp
 from teachers_routes import teachers_bp
 
 # Создали экземпляр приложения Flask
