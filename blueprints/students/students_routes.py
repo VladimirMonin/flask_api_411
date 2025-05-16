@@ -116,6 +116,7 @@ from flask import Blueprint, request, Response
 from flask import request, Response
 from models import Student, Group
 import json
+from keys import is_valid_api_key, is_admin
 
 # Создаем блюпринт для студентов с префиксом /api/students
 students_bp = Blueprint("students", __name__, url_prefix="/api/students")
@@ -127,6 +128,17 @@ students_bp = Blueprint("students", __name__, url_prefix="/api/students")
 # Функция будет вызываться в формате get_student_by_id(id=1)
 @students_bp.route("/<int:id>", methods=["GET"])
 def get_student_by_id(id):
+    # В первую очередь проверяем, что ключ API валиден
+    api_key = request.headers.get("api_key")
+    print(api_key)
+    if not is_valid_api_key(api_key):
+        return Response(
+            json.dumps({"error": "Неверный API ключ"}, ensure_ascii=False),
+            status=403,
+            mimetype="application/json; charset=utf-8",
+        )
+    
+    # Сюда попадаем только если ключ валиден
     try:
         student = Student.get(Student.id == id)
 
