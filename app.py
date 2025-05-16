@@ -112,16 +112,12 @@ DELETE /api/student/{id}/delete
         }
 """
 
-import re
-from turtle import st
-from flask import Flask, jsonify, request, Response
+from flask import Flask, request, Response
 from models import Student, Group
 import json
 
 # 1. Создали экземпляр приложения Flask
 app = Flask(__name__)
-
-app.config["JSON_AS_ASCII"] = False
 
 
 # GET /api/student/{id}
@@ -178,42 +174,44 @@ def create_student():
                 mimetype="application/json; charset=utf-8",
             )
 
-        # Если тело запроса есть, мы добываем данные из него
-        first_name = data.get("first_name")
-        middle_name = data.get("middle_name")
-        last_name = data.get("last_name")
-        age = data.get("age")
-        group = data.get("group")
+        # Получаем список полей модели (кроме id, который автоматически генерируется)
+        valid_fields = [name for name in Student._meta.fields.keys() if name != 'id']
 
-        # Если мы НЕ получили данные из тела запроса, то возвращаем ошибку
-        if not all([first_name, middle_name, last_name, age, group]):
+        # Создаём словарь с данными для нового студента
+        student_data = {}
+        
+        # Проходим по всем полям модели и заполняем словарь данными из запроса
+        for field_name in valid_fields:
+            if field_name in data:
+                # Особая обработка для поля-связи с другой таблицей
+                if field_name == 'group':
+                    try:
+                        student_data[field_name] = Group.get(Group.group_name == data.get(field_name))
+                    except Group.DoesNotExist:
+                        return Response(
+                            json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
+                            status=404,
+                            mimetype="application/json; charset=utf-8",
+                        )
+                else:
+                    student_data[field_name] = data.get(field_name)
+
+        # Проверяем, что все обязательные поля заполнены
+        required_fields = ['first_name', 'last_name', 'age', 'group']
+        if not all(field in student_data for field in required_fields):
             return Response(
                 json.dumps(
-                    {"error": "Не все данные для создания студента были предоставлены"},
+                    {"error": "Не все обязательные данные предоставлены"},
                     ensure_ascii=False,
                 ),
                 status=400,
                 mimetype="application/json; charset=utf-8",
             )
 
-        # Для создания нового студента нам нужен экземпляр группы
-        try:
-            group = Group.get(Group.group_name == group)
-        except Group.DoesNotExist:
-            return Response(
-                json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
-                status=404,
-                mimetype="application/json; charset=utf-8",
-            )
+        # Создаём студента одной командой, распаковывая словарь в параметры
+        student = Student.create(**student_data)
 
-        # Создаем нового студента
-        student = Student.create(
-            first_name=first_name,
-            middle_name=middle_name,
-            last_name=last_name,
-            age=age,
-            group=group,
-        )
+        
 
         # Возвращаем ответ с данными созданного студента
         data = {
