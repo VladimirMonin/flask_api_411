@@ -117,6 +117,8 @@ from flask import request, Response
 from models import Student, Group
 import json
 from keys import is_valid_api_key, is_admin
+from blueprints.students.validators import StudentValidator
+from pydantic import ValidationError as PydanticValidationError
 
 # Создаем блюпринт для студентов с префиксом /api/students
 students_bp = Blueprint("students", __name__, url_prefix="/api/students")
@@ -129,7 +131,8 @@ students_bp = Blueprint("students", __name__, url_prefix="/api/students")
 @students_bp.route("/<int:id>", methods=["GET"])
 def get_student_by_id(id):
     # В первую очередь проверяем, что ключ API валиден
-    api_key = request.headers.get("api_key")
+    print(request.headers)
+    api_key = request.headers.get("X-API-KEY")
     print(api_key)
     if not is_valid_api_key(api_key):
         return Response(
@@ -137,7 +140,6 @@ def get_student_by_id(id):
             status=403,
             mimetype="application/json; charset=utf-8",
         )
-    
     # Сюда попадаем только если ключ валиден
     try:
         student = Student.get(Student.id == id)
@@ -185,38 +187,32 @@ def create_student():
                 ),
                 status=400,
                 mimetype="application/json; charset=utf-8",
-            )
+            )  # Валидируем данные с помощью Pydantic
+        try:
+            # Проверяем полученные данные через валидатор
+            validated_data = StudentValidator(**data)
+            # Получаем данные в виде словаря
+            validated_dict = validated_data.model_dump()
+            # Создаем словарь для студента на основе всех данных, прошедших валидацию
+            student_data = validated_dict.copy()
 
-        # Получаем список полей модели (кроме id, который автоматически генерируется)
-        valid_fields = [name for name in Student._meta.fields.keys() if name != 'id']
+            # Удаляем строку с названием группы из словаря
+            group_name = student_data.pop("group")
 
-        # Создаём словарь с данными для нового студента
-        student_data = {}
-        
-        # Проходим по всем полям модели и заполняем словарь данными из запроса
-        for field_name in valid_fields:
-            if field_name in data:
-                # Особая обработка для поля-связи с другой таблицей
-                if field_name == 'group':
-                    try:
-                        student_data[field_name] = Group.get(Group.group_name == data.get(field_name))
-                    except Group.DoesNotExist:
-                        return Response(
-                            json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
-                            status=404,
-                            mimetype="application/json; charset=utf-8",
-                        )
-                else:
-                    student_data[field_name] = data.get(field_name)
+            # Ищем группу по названию и добавляем её объект в данные
+            try:
+                student_data["group"] = Group.get(Group.group_name == group_name)
+            except Group.DoesNotExist:
+                return Response(
+                    json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
+                    status=404,
+                    mimetype="application/json; charset=utf-8",
+                )
 
-        # Проверяем, что все обязательные поля заполнены
-        required_fields = ['first_name', 'last_name', 'age', 'group']
-        if not all(field in student_data for field in required_fields):
+        except PydanticValidationError as e:
+            # Если данные не прошли валидацию - возвращаем ошибки
             return Response(
-                json.dumps(
-                    {"error": "Не все обязательные данные предоставлены"},
-                    ensure_ascii=False,
-                ),
+                json.dumps({"error": f"Ошибка валидации: {e}"}, ensure_ascii=False),
                 status=400,
                 mimetype="application/json; charset=utf-8",
             )
@@ -224,9 +220,8 @@ def create_student():
         # Создаём студента одной командой, распаковывая словарь в параметры
         student = Student.create(**student_data)
 
-        
-
         # Возвращаем ответ с данными созданного студента
+        # В целом то можно было сделать Dump через Pydantic, правда пришлось бы добавить имя групып
         data = {
             "id": student.id,
             "name": f"{student.first_name} {student.last_name}",
@@ -306,42 +301,38 @@ def update_student(id):
             ),
             status=400,
             mimetype="application/json; charset=utf-8",
-        )
+        )  # Валидируем данные с помощью Pydantic
+    try:
+        # Проверяем полученные данные через валидатор (у нас всегда должны быть все поля)
+        validated_data = StudentValidator(**data)
 
-    # Если тело запроса есть, мы добываем данные из него
-    first_name = data.get("first_name")
-    middle_name = data.get("middle_name")
-    last_name = data.get("last_name")
-    age = data.get("age")
-    group = data.get("group")
+        # Получаем данные в виде словаря
+        validated_dict = validated_data.model_dump()
 
-    # Если мы НЕ получили данные из тела запроса, то возвращаем ошибку
-    if not all([first_name, middle_name, last_name, age, group]):
+        # Если передано название группы, находим соответствующий объект группы
+        try:
+            group_name = validated_dict.pop("group")
+            group_obj = Group.get(Group.group_name == group_name)
+            # Обновляем ссылку на группу
+            student.group = group_obj
+        except Group.DoesNotExist:
+            return Response(
+                json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
+                status=404,
+                mimetype="application/json; charset=utf-8",
+            )
+
+        # Обновляем остальные поля студента
+        for field, value in validated_dict.items():
+            setattr(student, field, value)
+
+    except PydanticValidationError as e:
+        # Если данные не прошли валидацию - возвращаем ошибки
         return Response(
-            json.dumps(
-                {"error": "Не все данные для обновления студента были предоставлены"},
-                ensure_ascii=False,
-            ),
+            json.dumps({"error": f"Ошибка валидации: {e}"}, ensure_ascii=False),
             status=400,
             mimetype="application/json; charset=utf-8",
         )
-
-    # Для создания нового студента нам нужен экземпляр группы
-    try:
-        group = Group.get(Group.group_name == group)
-    except Group.DoesNotExist:
-        return Response(
-            json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
-            status=404,
-            mimetype="application/json; charset=utf-8",
-        )
-
-    # Обновляем данные студента
-    student.first_name = first_name
-    student.middle_name = middle_name
-    student.last_name = last_name
-    student.age = age
-    student.group = group
 
     # Сохраняем изменения в базе данных
     student.save()
@@ -386,7 +377,6 @@ def get_students():
                 group = Group.get(Group.group_name == filter_group)
                 # Фильтруем студентов по найденной группе
                 query = query.where(Student.group == group)
-            
             except Group.DoesNotExist:
                 return Response(
                     json.dumps({"error": "Группа не найдена"}, ensure_ascii=False),
