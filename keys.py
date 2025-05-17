@@ -16,7 +16,7 @@ USERS = [
 
 # Пойдем по простому пути - функции!
 
-def is_valid_api_key(api_key):
+def is_valid_api_key(api_key) -> bool:
     """
     Проверяет, является ли переданный ключ действительным.`
     :param api_key: Ключ API для проверки
@@ -25,7 +25,7 @@ def is_valid_api_key(api_key):
     return any(user["api_key"] == api_key for user in USERS)
 
 
-def is_admin(api_key):
+def is_admin(api_key) -> bool:
     """
     Проверяет, является ли пользователь администратором.
     :param api_key: Ключ API для проверки
